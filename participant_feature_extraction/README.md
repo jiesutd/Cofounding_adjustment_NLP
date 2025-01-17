@@ -273,7 +273,7 @@ read_clustered_word_embeddings(
     cohort_frame = The `R` dataframe of the main cohort,
     join_by_var = The column variable upon which the input dataframe and the claims/rpdr data is to be joined,
     input = Path to the word embedding outputs in `.parquet` format,
-	model = The model used for the embeddings calculation typically "bert" or "glove",
+    model = The model used for the embeddings calculation typically "bert" or "glove",
     clustsize = The cluster size you wish to estimate such as 10000
   )
 ```
