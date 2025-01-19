@@ -1,0 +1,380 @@
+---
+title: "2 - Modeling"
+author: "Janick Weberpals/Thomas DeRamus"
+date: "Last compiled `r Sys.time()`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    classoption: landscape
+    number_sections: no
+    keep_md: yes
+---
+
+## Library, data, and path definitions
+
+```{r Library and Pathing, include=FALSE}
+#Load libraries used in this document
+library(tidyverse)
+library(janitor)
+library(toolbox)
+library(stringr)
+library(readr)
+library(data.table)
+library(arrow)
+library(glue)
+#Tidytable will override all arrow dependencies unless you load it first.
+#library(tidytable)
+library(lubridate)
+library(fastDummies)
+library(readxl)
+library(fs)
+library(DBI)
+library(duckdb)
+library(duckplyr)
+library(dbplyr)
+library(microbenchmark)
+library(parallel)
+library(listenv)
+source(here::here("functions_shared", "format_table.R"))
+
+#Paths for function mappings
+#python_path <- Sys.getenv("python_path")
+#python_path='/Python/mambaforge/bin/python3'
+python_path <- Sys.getenv("python_path")
+
+#Paths where cohort data is stored
+path_base_cohorts <- Sys.getenv("path_base_cohorts")
+structured_codes_path <- Sys.getenv("path_hdps_r_formatted")
+path_ngrams <- Sys.getenv("path_ngrams")
+path_nlp_in <- Sys.getenv("path_nlp_in")
+
+
+#Cohort mapping
+#Change the values below as needed to flag your cohort of interest
+COIs <- '<cohort_of_interest>'
+Cpath <- grep(glob2rx(paste0("*",gsub("_","*",COIs),"*")),list.dirs(path_nlp_in,recursive = FALSE, full.names = FALSE),ignore.case=TRUE,value=TRUE)
+
+
+# Uncomment and use the necessary flag if running on landmark
+# If running on another server, leave line below commented as `glob2rx` above handles it
+#Cpath <- '<Folder_containing_csv_files>'
+
+
+#This flags whether the path should come from a Medicare or Medicaid cohort
+#and assigns the parent directory and csv files of interest accordingly
+DatasetOI <- 'Medicare'
+
+
+if (DatasetOI == 'Medicaid') {
+  fval = 'max'
+  fdir = 'max_cohorts'
+} else if (DatasetOI == 'Medicare') {
+  fval = 'mcr'
+  fdir = 'mcr_cohorts'
+} else{
+  fval = ''
+}
+tagged_cohort <-
+  paste0(
+    path_base_cohorts,
+    list.files(
+      path = path_base_cohorts,
+      pattern = "*.csv$",
+      recursive = TRUE
+    )
+  )[grepl(COIs, paste0(
+    path_base_cohorts,
+    "/",
+    list.files(
+      path = path_base_cohorts,
+      pattern = "*.csv$",
+      recursive = TRUE
+    )
+  )) &
+    grepl(fval, paste0(
+      path_base_cohorts,
+      "/",
+      list.files(
+        path = path_base_cohorts,
+        pattern = "*.csv$",
+        recursive = TRUE
+      )
+    ))]
+```
+
+# Load and pre-process data
+
+## Base cohort
+
+```{r Base Cohort Assignment, echo=FALSE}
+# note: for washout of 365 use the following when setting COI_frame:
+#         data.frame(filter(COI_frame, prior365_treatment_flag == 0 & prior365_comparator_flag== 0))
+# note: for washout of 180 use the following when setting COI_frame:
+#         data.frame(filter(COI_frame, prior180_treatment_flag == 0 & prior180_comparator_flag== 0))
+
+########### Add feature to toggle in treatment flag #############
+COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE)
+
+washout_window = 365
+
+if (COIs %in% c("<repeated_measure_group_1>", "<repeated_measure_group_2>")){
+  windovar = paste0("_", as.character(washout_window), "_non_user_cohort_")
+  if ("<Participant_ID_Variable>" %in% colnames(COI_frame))
+  {
+    COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE) %>%
+      filter(prior365_treatment_flag == 0
+      ) %>% as.data.frame()
+    COI_frame %>%
+      glimpse()
+  } else{
+    COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE) %>%
+      select(-c(Variables, that_form, participantID)) %>%
+      filter(prior365_treatment_flag == 0
+      ) %>% as.data.frame()
+} 
+  
+} else {
+
+if (washout_window == 365) {
+  windovar = paste0("_", as.character(washout_window), "_washout_period_")
+  if ("<Participant_ID_Variable>" %in% colnames(COI_frame))
+  {
+    COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE) %>%
+      filter(prior365_treatment_flag == 0 & prior365_comparator_flag == 0
+      ) %>% as.data.frame()
+    COI_frame %>%
+      glimpse()
+  } else{
+    COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE) %>%
+      #Our data was keyed off three separate values to generate the Participant IDs
+      #If this is an exception to add this variable if it cannot be found in the data
+      select(-c(Variables, that_form, participantID)) %>%
+      filter(prior365_treatment_flag == 0 & prior365_comparator_flag == 0
+      ) %>% as.data.frame()
+  }
+} else if (washout_window == 180) {
+  windovar = paste0("_", as.character(washout_window), "_washout_period_")
+  if ("<Participant_ID_Variable>" %in% colnames(COI_frame))
+  {
+    COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE) %>%
+      filter(prior180_treatment_flag == 0 & prior180_comparator_flag == 0
+      ) %>% as.data.frame()
+    COI_frame %>%
+      glimpse()
+  } else{
+    COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE) %>%
+      #Our data was keyed off three separate values to generate the Participant IDs
+      #If this is an exception to add this variable if it cannot be found in the data
+      select(-c(Variables, that_form, participantID)) %>%
+      filter(prior180_treatment_flag == 0 & prior180_comparator_flag == 0
+      ) %>% as.data.frame()
+  }
+} else{
+  windovar = "_no_washout_period_"
+  COI_frame <- read_csv(tagged_cohort, show_col_types = FALSE) %>% as.data.frame()
+  }
+}
+```
+
+# Process data into participant-level summaries
+
+## Structured Codes
+
+```{r Read Structured Codes, echo=FALSE}
+# call function
+source(here::here("functions_shared", "structured_codes_integration.R"))
+
+tictoc::tic()
+structured_codes <- structured_codes_integration(
+  cohort = COI_frame,
+  # main cohort for which empirical covariates should be added
+  data = paste0(
+    structured_codes_path,
+    "/",
+    list.files(
+      path = structured_codes_path,
+      pattern = "*.csv$",
+      recursive = TRUE
+    )
+  )[grepl(COIs, paste0(
+    structured_codes_path,
+    "/",
+    list.files(
+      path = structured_codes_path,
+      pattern = "*.csv$",
+      recursive = TRUE
+    )
+  )) &
+    grepl(fval, paste0(
+      structured_codes_path,
+      "/",
+      list.files(
+        path = structured_codes_path,
+        pattern = "*.csv$",
+        recursive = TRUE
+      )
+    ))],
+  dimensions_to_add = "combined",
+  join_by_col = "<Participant_ID_Variable>"
+)
+
+tictoc::toc()
+```
+
+## Ngrams
+
+We call the shared function and read in and merge both unigram and bigram cohort.
+
+```{r Read Ngrams, echo=FALSE}
+# call function
+source(here::here("functions_shared", "read_ngrams.R"))
+tictoc::tic()
+ngrams_cohorts <- read_ngrams(
+  path_ngram_csv = paste0(path_ngrams, "/", fdir, "/", COIs, "/"),
+  cohort = COI_frame,
+  join_by_var = "<Participant_ID_Variable>"
+)
+tictoc::toc()
+```
+
+### Unigram
+
+```{r Assign Unigrams, echo=FALSE}
+unigram_cohort <- ngrams_cohorts$cohort_unigram
+```
+
+The merged unigram cohort has in total `r dim(unigram_cohort)[1]` patients and `r dim(unigram_cohort)[2]` covariates.
+
+### Bigram
+
+```{r Assign Bigrams, echo=FALSE}
+bigram_cohort <- ngrams_cohorts$cohort_bigram
+```
+
+##The merged bigram cohort has in total `r dim(bigram_cohort)[1]` patients and `r dim(bigram_cohort)[2]` covariates.
+
+
+##mTerms Workflow
+
+Read subset of data
+
+```{r Partition mTerms into frequency and dummy columns, echo=FALSE}
+#Few things to note regarding the flags:
+#cohort: the string pointing to the csv file for the cohort of interest
+#refhort: the dataframe with the cohort of interest specified at the start
+##Plan to integrate an if/then statement for cohort and refhort at some point so you don't need both flags
+#join_by_var: The variable by which you want to merge the cohort/refhort and mterms data
+##Note: mterms may not have your participant ID information in the data
+#outputdir: the directory to which the results are to be saved. The git repo directory is recommended if you have space
+#summary_only: TRUE/FALSE flag stating whether you want just the summary outputs (assuming they were calculated already)
+#or if you want to run the full workflow that generates dummy variables for all participants.
+##Note - The latter takes an exceptionally long time and is recommended to run as a script rather than in the Quarto doc
+#write_output: TRUE/FALSE flag to designate if you want the output to be written to the disk (recommended if running for
+#the first time)
+#direct_load: TRUE/FALSE flag to designate if you want to load *EXISTING* parquet files into the workspace.
+##Note: If such files exist, all you should need is the outputdir path
+source(here::here("functions_shared", "mTerms_regressor_generator.R"))
+
+tictoc::tic()
+cohort_mterms <- mTerms_regressor_generator(
+  cohort = tagged_cohort,
+  refhort = COI_frame,
+  join_by_var = "<Participant_ID_Variable>",
+  mTerms_data_path = '/path/to/data/mTerms/mTerms_Cleaned',
+  outputdir = '/output/results/directory/nlp-modeling',
+  summary_only = TRUE,
+  write_output = FALSE,
+  direct_load = TRUE
+)
+tictoc::toc()
+```
+
+
+##Read clustered Sentence Embeddings
+
+Read subset of data
+
+Comment: Need to change input path for each cohort (now included in 'Cpath' with 4.3 R so no longer don't need to manually change).
+
+```{r Compute and/or Summarize Sentence Embeddings Based on Clustering}
+#The bare minimum fields that need to be filled are:
+#>cohort_frame: the (filtered) dataframe you are using for joining and analyses for all the other funcitons
+#>this is the data upon which the embeddings will be merged, rather than in the python script itself
+#>join_by_var: the variable by which you are joining the dataframes, likely EMPI_Indexdt
+#>input: Filepath where the clustering outputs are located
+#>clustsize: The cluster size of the (pre-computed) results to be loaded
+#>#Note: the workflow is currently regex based and is expecting certain keywords. If the desired results are not returned,
+#>check that the results of the call follow regex rules
+source(here::here("functions_shared", "read_clustered_sentence_embeddings.R"))
+
+tictoc::tic()
+clustered_sentence_embeddings_cohort <-
+  read_clustered_sentence_embeddings(
+    cohort_frame = COI_frame,
+    join_by_var = "<Participant_ID_Variable>",
+    input = paste0("/path/to/data/embeddings/",Cpath,"/"),
+    clustsize = 10000
+  )
+tictoc::toc()
+
+## (because it takes so long to run the clusters in the current state,
+## just write out clustered_sentence_embeddings_cohort to csv file)
+## fwrite(clustered_sentence_embeddings_cohort, file=paste0(temp_DIR, paste0("clustered_sentence_embeddings_htn", ".csv")))
+#test<- as.data.frame(fread(paste0(temp_DIR, paste0("clustered_sentence_embeddings_htn", ".csv")), header=TRUE)) 
+```
+
+
+##Read clustered Word Embeddings
+
+Read subset of data
+
+```{r Compute and/or Summarize Sentence Embeddings Based on Clustering, echo=FALSE}
+#The bare minimum fields that need to be filled are:
+#>cohort_frame: the (filtered) dataframe you are using for joining and analyses for all the other functions
+#>this is the data upon which the embeddings will be merged, rather than in the python script itself
+#>join_by_var: the variable by which you are joining the dataframes
+#>input: Filepath where the clustering outputs are located
+#>clustsize: The cluster size of the (pre-computed) results to be loaded
+#>#Note: the workflow is currently regex based and is expecting certain keywords.
+#>If the desired results are not returned,
+#>check that the results of the call follow regex rules
+source(here::here("functions_shared", "read_clustered_word_embeddings.R"))
+
+tictoc::tic()
+clustered_word_embeddings_cohort <- read_clustered_word_embeddings(
+  cohort_frame = COI_frame,
+  join_by_var = "<Participant_ID_Variable>",
+  input = paste0("/path/to/data/embeddings/",Cpath,"/"),
+  model = "glove",
+  clustsize = 10000
+)
+tictoc::toc()
+```
+
+
+
+##Read topic models
+
+```{r Partition Topic Contributions into Dummy Columns by Cluster Size, echo=FALSE}
+#The bare minimum fields that need to be filled are:
+#>cohort_frame: the (filtered) dataframe you are using for joining and analyses for all the other funcitons
+#>this is the data upon which the embeddings will be merged, rather than in the python script itself
+#>join_by_var: the variable by which you are joining the dataframes, likely EMPI_Indexdt
+#>input: Filepath where the clustering outputs are located
+#>clustsize: The cluster size of the (pre-computed) results to be loaded
+#>#Note: the workflow is currently regex based and is expecting certain keywords. If the desired results are not returned,
+#>check that the results of the call follow regex rules
+source(here::here("functions_shared", "read_clustered_topic_contributions.R"))
+
+tictoc::tic()
+cohort_clustered_topic_contributions <- read_clustered_topic_contributions(
+  cohort_frame = COI_frame,
+  join_by_var = "<Participant_ID_Variable>",
+  input = paste0("/path/to/data/topic/",Cpath,"/"),
+  clustsize = 1500
+)
+tictoc::toc()
+```
