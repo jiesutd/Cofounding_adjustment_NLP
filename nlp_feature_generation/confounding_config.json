@@ -1,0 +1,51 @@
+{
+    "TASK": "STATIN",
+    
+    "SPAN_START": "0",
+    
+    "SPAN_END": "365",
+    
+    "NGRAMS_TO_EXTRACT": "20000",
+    
+    "NGRAMS_EXTRACT_ALL": "true",
+    
+    "PREPROCESSOR": "nltk",
+    
+    "ALGORITHM": "ngram embedding topic_model",
+    
+    "SOURCE": ["/path/jmp_folder"], 
+
+    "NOTE_DIR": "/path/jmp_folder",
+    
+    "OUTPUT_DIR": "/path/lg_output/",
+
+    "TARGET_TABLE_PREFIX": "STATIN_",
+    
+    "SOURCE_FILE_SUFFIX": ["Car.txt","Dis.txt","End.txt","Hnp.txt","Lno.txt","Mic.txt","Opn.txt","Pat.txt","Prg.txt"
+    ,"Pul.txt","Rad.txt","Vis.txt"],
+
+    "EMBEDDINGS": "sentence_detector glove biobert use embed_sentence.bert",
+
+    "ITERATIONS": "50",
+    
+    "PASSES": "10",
+    
+    "K_TOPICS_LIST": ["5","6"], 
+    
+    "PLOT_X_LABELS": ["5","6","7"],
+    
+    "PLOT_PERPLEXITY_UMASS": "true",
+    
+    "PLOT_PERPLEXITY_CV": "true",
+    
+    "SAVE_TOPIC_MODEL": "true",
+    
+    "LOG_TOPIC_METRICS": "true",
+    
+    "LOG_TOPIC_WEIGHTS": "true",
+    
+    "LOG_TOP_TOPICS": "true",
+
+    "OUTPUT_ELEMENTS": "empi_expdate_notedate_diff_notetype" 
+}
+

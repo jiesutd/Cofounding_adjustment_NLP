@@ -6,8 +6,11 @@ This repository lists the source code of our series of work by incorporating nat
 
 ## NLP Feature Generation
 
-## The Analysis Workflow
+- confounding_ngram.py - Generates unigram and bigram features from notes 
+- confounding_embeddings.py - Generates word or sentences embeddings 
+- confounding_topicmodeling.py - Generates topic modeling features
 
+## The Analysis Workflow
 Root Directory:
 
 - .Rprofile - Metadata for how to configure the `R` environment
@@ -39,6 +42,11 @@ workflow_scripts:
 
 If you use code in this repository in your paper, please cite our papers:
 
-    @inproceedings{...}
-
-    @inproceedings{...}
+    @article{wyss2025natural,
+    title={Natural language processing for scalable feature engineering and ultra-high-dimensional confounding adjustment in healthcare database studies.},
+    author={Wyss, Richard and Yang, Jie and Schneeweiss, Sebastian and Plasek, Joseph M and Zhou, Li and Deramus, Thomas and Weberpals, Janick G and Ngan, Kerry and Tsacogianis, Theodore N and Lin, Kueiyu Joshua},
+    journal={medRxiv},
+    pages={2025--01},
+    year={2025},
+    publisher={Cold Spring Harbor Laboratory Press}
+    }
